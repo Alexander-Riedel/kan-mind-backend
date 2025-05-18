@@ -3,9 +3,11 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework.authtoken.models import Token
 from rest_framework import status
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from auth_app.models import UserProfile
 from .serializers import RegistrationSerializer
+
 
 class RegistrationView(APIView):
     permission_classes = [AllowAny]
@@ -13,7 +15,7 @@ class RegistrationView(APIView):
     def post(self, request):
         # Load incoming data into the serializer
         serializer = RegistrationSerializer(data=request.data)
-        
+
         # Check if the data is valid
         if serializer.is_valid():
             email = serializer.validated_data['email']
@@ -21,7 +23,8 @@ class RegistrationView(APIView):
             fullname = serializer.validated_data['fullname']
 
             # Create the User object (using email as the username)
-            user = User.objects.create_user(username=email, email=email, password=password)
+            user = User.objects.create_user(
+                username=email, email=email, password=password)
 
             # Create the related UserProfile with the provided fullname
             UserProfile.objects.create(user=user, fullname=fullname)
@@ -36,6 +39,36 @@ class RegistrationView(APIView):
                 "user_id": user.id,
                 "token": token.key
             }, status=status.HTTP_201_CREATED)
-        
+
         # If validation failed, return error message
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        password = request.data.get('password')
+
+        # Because we stored email as the username:
+        user = authenticate(username=email, password=password)
+
+        if not user:
+            return Response(
+                {"error": "Invalid email or password."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get or create a token
+        token, _ = Token.objects.get_or_create(user=user)
+
+        # Get fullname from UserProfile
+        profile = UserProfile.objects.get(user=user)
+
+        return Response({
+            'token': token.key,
+            'fullname': profile.fullname,
+            'email': user.email,
+            'user_id': user.id
+        }, status=status.HTTP_200_OK)
