@@ -1,60 +1,37 @@
-from rest_framework import generics
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+from rest_framework import status
+from django.contrib.auth.models import User
 from auth_app.models import UserProfile
 from .serializers import RegistrationSerializer
-from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
-from rest_framework.authtoken.models import Token
-from rest_framework.response import Response
-from rest_framework.authtoken.views import ObtainAuthToken
-
-
-# class UserProfileList(generics.ListCreateAPIView):
-#     queryset = UserProfile.objects.all()
-#     serializer_class = UserProfileSerializer
-
-
-# class UserProfileDetail(generics.RetrieveUpdateDestroyAPIView):
-#     queryset = UserProfile.objects.all()
-#     serializer_class = UserProfileSerializer
-
 
 class RegistrationView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        # Load incoming data into the serializer
         serializer = RegistrationSerializer(data=request.data)
-
-        data = {}
-        if serializer.is_valid():
-            saved_account = serializer.save()
-            token, created = Token.objects.get_or_create(user=saved_account)
-            data = {
-                'token': token.key,
-                'username': saved_account.username,
-                'email': saved_account.email
-            }
-        else:
-            data=serializer.errors
         
-        return Response(data)
-    
-
-class CustomLoginView(ObtainAuthToken):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = self.serializer_class(data=request.data)
-
-        data = {}
+        # Check if the data is valid (e.g., passwords match, email format correct, etc.)
         if serializer.is_valid():
-            user = serializer.validated_data['user']
-            token, created = Token.objects.get_or_create(user=user)
-            data = {
-                'token': token.key,
-                'username': user.username,
-                'email': user.email
-            }
-        else:
-            data=serializer.errors
+            email = serializer.validated_data['email']
+            password = serializer.validated_data['password']
+            fullname = serializer.validated_data['fullname']
+
+            # Create the User object (using email as the username)
+            user = User.objects.create_user(username=email, email=email, password=password)
+
+            # Create the related UserProfile with the provided fullname
+            UserProfile.objects.create(user=user, fullname=fullname)
+
+            # Return a success response with user info (token will be added later)
+            return Response({
+                "fullname": fullname,
+                "email": email,
+                "user_id": user.id,
+                # "token": ""
+            }, status=status.HTTP_201_CREATED)
         
-        return Response(data)
+        # If validation failed, return error messages
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
