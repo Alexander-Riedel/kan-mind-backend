@@ -1,7 +1,7 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
-from kanban_app.models import Board
-from .serializers import BoardSerializer
+from kanban_app.models import Board, Task
+from .serializers import BoardSerializer, TaskSerializer
 from django.db import models
 
 
@@ -73,3 +73,20 @@ class BoardDetailView(generics.RetrieveAPIView):
 
         # Return the board object if access is allowed
         return board
+    
+
+# This view handles:
+# - GET /api/tasks/assigned-to-me/
+# 
+# Returns all tasks where the currently authenticated user is the assignee.
+# The user must be logged in (IsAuthenticated).
+class AssignedTasksView(generics.ListAPIView):
+    serializer_class = TaskSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Get the current user
+        user = self.request.user
+
+        # Return all tasks where the user is assigned
+        return Task.objects.filter(assignee=user)

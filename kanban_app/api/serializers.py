@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from kanban_app.models import Board #, Task
+from kanban_app.models import Board, Task
 from django.contrib.auth.models import User
 
 class BoardSerializer(serializers.ModelSerializer):
@@ -42,3 +42,34 @@ class BoardSerializer(serializers.ModelSerializer):
         board = Board.objects.create(**validated_data)
         board.members.set(members)
         return board
+
+
+# Used to represent a user as { id, email, fullname }
+class UserSummarySerializer(serializers.ModelSerializer):
+    fullname = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'fullname']
+
+    def get_fullname(self, obj):
+        return f"{obj.first_name} {obj.last_name}".strip()
+
+
+# Task output serializer
+class TaskSerializer(serializers.ModelSerializer):
+    assignee = UserSummarySerializer(read_only=True)
+    reviewer = UserSummarySerializer(read_only=True)
+    comments_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Task
+        fields = [
+            'id', 'board', 'title', 'description',
+            'status', 'priority', 'assignee', 'reviewer',
+            'due_date', 'comments_count'
+        ]
+
+    def get_comments_count(self, obj):
+        # Will be updated when Comment model is available
+        return 0
