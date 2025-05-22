@@ -122,3 +122,8 @@ class TaskCreateSerializer(serializers.ModelSerializer):
 
         task.save()
         return task
+    
+
+class TaskUpdateSerializer(TaskCreateSerializer):
+    class Meta(TaskCreateSerializer.Meta):
+        read_only_fields = ['board']

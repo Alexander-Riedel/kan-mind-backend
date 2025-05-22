@@ -2,8 +2,12 @@ from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from kanban_app.models import Board, Task
-from .serializers import BoardSerializer, TaskSerializer, TaskCreateSerializer
+from .serializers import BoardSerializer, TaskSerializer, TaskCreateSerializer, TaskUpdateSerializer
 from django.db import models
+
+from rest_framework import generics, permissions
+from rest_framework.exceptions import PermissionDenied
+from django.shortcuts import get_object_or_404
 
 
 # This view handles:
@@ -130,3 +134,30 @@ class TaskCreateView(generics.CreateAPIView):
         created_task = Task.objects.get(pk=response.data['id'])
         full_data = TaskSerializer(created_task).data
         return Response(full_data, status=status.HTTP_201_CREATED)
+    
+
+class TaskUpdateView(generics.UpdateAPIView):
+    queryset = Task.objects.all()
+    serializer_class = TaskUpdateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        # Hol die Task und prüfe, ob der User zum Board gehört
+        task = get_object_or_404(Task, pk=self.kwargs['pk'])
+        user = self.request.user
+        board = task.board
+
+        if user != board.owner and user not in board.members.all():
+            raise PermissionDenied("Du darfst diese Aufgabe nicht bearbeiten.")
+        return task
+
+    def get_serializer_context(self):
+        return {'request': self.request}
+
+    def update(self, request, *args, **kwargs):
+        # Führe das normale Update durch
+        response = super().update(request, *args, **kwargs)
+        # Lade die aktualisierte Version mit dem Ausgabe-Serializer
+        updated_task = self.get_object()
+        full_data = TaskSerializer(updated_task).data
+        return Response(full_data, status=status.HTTP_200_OK)
