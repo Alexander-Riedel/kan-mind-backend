@@ -1,7 +1,8 @@
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from kanban_app.models import Board, Task
-from .serializers import BoardSerializer, TaskSerializer
+from .serializers import BoardSerializer, TaskSerializer, TaskCreateSerializer
 from django.db import models
 
 
@@ -104,3 +105,28 @@ class ReviewingTasksView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
         return Task.objects.filter(reviewer=user)
+    
+
+# This view handles:
+# - POST /api/tasks/
+#
+# It creates a new task on a board.
+# The user must be authenticated AND a member of the board.
+class TaskCreateView(generics.CreateAPIView):
+    serializer_class = TaskCreateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_context(self):
+        # Needed so the serializer can access request.user in `validate`
+        return {'request': self.request}
+
+    def perform_create(self, serializer):
+        # Let the serializer handle validation and saving
+        serializer.save()
+
+    def create(self, request, *args, **kwargs):
+        # Standard CreateAPIView behavior, but return full TaskSerializer after creation
+        response = super().create(request, *args, **kwargs)
+        created_task = Task.objects.get(pk=response.data['id'])
+        full_data = TaskSerializer(created_task).data
+        return Response(full_data, status=status.HTTP_201_CREATED)

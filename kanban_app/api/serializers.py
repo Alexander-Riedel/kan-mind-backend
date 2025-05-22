@@ -73,3 +73,52 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_comments_count(self, obj):
         # Will be updated when Comment model is available
         return 0
+    
+
+class TaskCreateSerializer(serializers.ModelSerializer):
+    assignee_id = serializers.IntegerField(required=False, allow_null=True)
+    reviewer_id = serializers.IntegerField(required=False, allow_null=True)
+
+    class Meta:
+        model = Task
+        fields = [
+            'id', 'board', 'title', 'description',
+            'status', 'priority',
+            'assignee_id', 'reviewer_id',
+            'due_date'
+        ]
+
+    def validate(self, data):
+        user = self.context['request'].user
+        board = data.get('board')
+
+        # Check: is the user a member of the board (or owner)?
+        if user != board.owner and user not in board.members.all():
+            raise serializers.ValidationError("You must be a member of the board to create a task.")
+
+        # Optional: Check if assignee and reviewer (if given) are also members
+        for role_field in ['assignee_id', 'reviewer_id']:
+            uid = data.get(role_field)
+            if uid:
+                try:
+                    u = User.objects.get(pk=uid)
+                    if u != board.owner and u not in board.members.all():
+                        raise serializers.ValidationError(f"{role_field} is not a member of the board.")
+                except User.DoesNotExist:
+                    raise serializers.ValidationError(f"{role_field} is invalid.")
+
+        return data
+
+    def create(self, validated_data):
+        assignee_id = validated_data.pop('assignee_id', None)
+        reviewer_id = validated_data.pop('reviewer_id', None)
+
+        task = Task.objects.create(**validated_data)
+
+        if assignee_id:
+            task.assignee = User.objects.get(pk=assignee_id)
+        if reviewer_id:
+            task.reviewer = User.objects.get(pk=reviewer_id)
+
+        task.save()
+        return task
