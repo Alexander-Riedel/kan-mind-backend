@@ -90,3 +90,17 @@ class AssignedTasksView(generics.ListAPIView):
 
         # Return all tasks where the user is assigned
         return Task.objects.filter(assignee=user)
+    
+
+# This view handles:
+# - GET /api/tasks/reviewing/
+#
+# Returns all tasks where the current user is the reviewer.
+# Requires authentication (IsAuthenticated).
+class ReviewingTasksView(generics.ListAPIView):
+    serializer_class = TaskSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return Task.objects.filter(reviewer=user)
