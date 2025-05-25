@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from kanban_app.models import Board, Task
+from kanban_app.models import Board, Task, Comment
 from django.contrib.auth.models import User
 
 class BoardSerializer(serializers.ModelSerializer):
@@ -117,7 +117,7 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         reviewer_id = validated_data.pop('reviewer_id', None)
 
         task = Task.objects.create(creator=self.context['request'].user, **validated_data)
-        
+
         if assignee_id:
             task.assignee = User.objects.get(pk=assignee_id)
         if reviewer_id:
@@ -130,3 +130,14 @@ class TaskCreateSerializer(serializers.ModelSerializer):
 class TaskUpdateSerializer(TaskCreateSerializer):
     class Meta(TaskCreateSerializer.Meta):
         read_only_fields = ['board']
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    author = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'created_at', 'author', 'content']
+
+    def get_author(self, obj):
+        return f"{obj.author.first_name} {obj.author.last_name}".strip()

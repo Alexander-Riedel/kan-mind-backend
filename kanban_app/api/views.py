@@ -1,9 +1,11 @@
 from rest_framework import mixins, generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from kanban_app.models import Board, Task
-from .serializers import BoardSerializer, TaskSerializer, TaskCreateSerializer, TaskUpdateSerializer
+from .serializers import BoardSerializer, TaskSerializer, TaskCreateSerializer, TaskUpdateSerializer, CommentSerializer
 from django.db import models
+from django.contrib.auth.models import User
 
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied
@@ -78,6 +80,81 @@ class BoardDetailView(generics.RetrieveAPIView):
 
         # Return the board object if access is allowed
         return board
+    
+
+class BoardUpdateView(generics.UpdateAPIView):
+    queryset = Board.objects.all()
+    serializer_class = BoardSerializer
+
+    # permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        board = super().get_object()
+        user = self.request.user
+
+        if user != board.owner and user not in board.members.all():
+            raise PermissionDenied("Du darfst dieses Board nicht bearbeiten.")
+        return board
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        board = self.get_object()
+        serializer = self.get_serializer(board, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        # Speichern
+        updated_board = serializer.save()
+
+        # Ausgabe wie in Success-Response
+        response_data = {
+            'id': updated_board.id,
+            'title': updated_board.title,
+            'owner_data': {
+                'id': updated_board.owner.id,
+                'email': updated_board.owner.email,
+                'fullname': f"{updated_board.owner.first_name} {updated_board.owner.last_name}".strip()
+            },
+            'members_data': [
+                {
+                    'id': m.id,
+                    'email': m.email,
+                    'fullname': f"{m.first_name} {m.last_name}".strip()
+                } for m in updated_board.members.all()
+            ]
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+
+class BoardDeleteView(generics.DestroyAPIView):
+    queryset = Board.objects.all()
+
+    # permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        board = super().get_object()
+        user = self.request.user
+
+        if board.owner != user:
+            raise PermissionDenied("Nur der Besitzer darf dieses Board löschen.")
+        return board
+
+    def delete(self, request, *args, **kwargs):
+        board = self.get_object()
+        board.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+
+class EmailCheckView(APIView):
+    # permission_classes = [IsAuthenticated]  # aktuell offen
+
+    def get(self, request):
+        email = request.query_params.get('email')
+        if email is None:
+            return Response({'detail': 'E-Mail-Adresse muss angegeben werden.'}, status=400)
+
+        exists = User.objects.filter(email=email).exists()
+        return Response({'exists': exists})
     
 
 # This view handles:
@@ -168,3 +245,34 @@ class TaskUpdateDeleteView(generics.GenericAPIView,
 
     def delete(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+    
+
+from kanban_app.models import Comment
+
+# GET /api/tasks/{task_id}/comments/
+class CommentListView(generics.ListAPIView):
+    serializer_class = CommentSerializer
+
+    def get_queryset(self):
+        task_id = self.kwargs['task_id']
+        return Comment.objects.filter(task_id=task_id).order_by('created_at')
+
+
+# POST /api/tasks/{task_id}/comments/
+class CommentCreateView(generics.CreateAPIView):
+    serializer_class = CommentSerializer
+
+    def perform_create(self, serializer):
+        task = get_object_or_404(Task, pk=self.kwargs['task_id'])
+        serializer.save(author=self.request.user, task=task)
+
+
+# DELETE /api/tasks/{task_id}/comments/{comment_id}/
+class CommentDeleteView(generics.DestroyAPIView):
+    queryset = Comment.objects.all()
+
+    def get_object(self):
+        comment = get_object_or_404(Comment, pk=self.kwargs['comment_id'])
+        if comment.author != self.request.user:
+            raise PermissionDenied("Du darfst nur deine eigenen Kommentare löschen.")
+        return comment
