@@ -1,4 +1,4 @@
-from rest_framework import generics, status
+from rest_framework import mixins, generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from kanban_app.models import Board, Task
@@ -139,29 +139,32 @@ class TaskCreateView(generics.CreateAPIView):
         return Response(full_data, status=status.HTTP_201_CREATED)
     
 
-class TaskUpdateView(generics.UpdateAPIView):
+class TaskUpdateDeleteView(generics.GenericAPIView,
+                           mixins.UpdateModelMixin,
+                           mixins.DestroyModelMixin):
     queryset = Task.objects.all()
     serializer_class = TaskUpdateSerializer
 
     # permission_classes = [IsAuthenticated]
 
     def get_object(self):
-        # Hol die Task und prüfe, ob der User zum Board gehört
         task = get_object_or_404(Task, pk=self.kwargs['pk'])
         user = self.request.user
-        board = task.board
-
-        if user != board.owner and user not in board.members.all():
-            raise PermissionDenied("Du darfst diese Aufgabe nicht bearbeiten.")
+        if self.request.method == 'PATCH':
+            if user != task.board.owner and user not in task.board.members.all():
+                raise PermissionDenied("Du darfst diese Aufgabe nicht bearbeiten.")
+        elif self.request.method == 'DELETE':
+            if user != task.creator and user != task.board.owner:
+                raise PermissionDenied("Du darfst diese Aufgabe nicht löschen.")
         return task
 
     def get_serializer_context(self):
         return {'request': self.request}
 
-    def update(self, request, *args, **kwargs):
-        # Führe das normale Update durch
-        response = super().update(request, *args, **kwargs)
-        # Lade die aktualisierte Version mit dem Ausgabe-Serializer
-        updated_task = self.get_object()
-        full_data = TaskSerializer(updated_task).data
+    def patch(self, request, *args, **kwargs):
+        response = self.update(request, *args, **kwargs)
+        full_data = TaskSerializer(self.get_object()).data
         return Response(full_data, status=status.HTTP_200_OK)
+
+    def delete(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
