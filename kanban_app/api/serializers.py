@@ -60,14 +60,17 @@ class UserSummarySerializer(serializers.ModelSerializer):
 class TaskSerializer(serializers.ModelSerializer):
     assignee = UserSummarySerializer(read_only=True)
     reviewer = UserSummarySerializer(read_only=True)
+    creator = UserSummarySerializer(read_only=True)
     comments_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = [
             'id', 'board', 'title', 'description',
-            'status', 'priority', 'assignee', 'reviewer',
-            'due_date', 'comments_count'
+            'status', 'priority',
+            'assignee', 'reviewer', 'creator',
+            'due_date', 'created_at',
+            'comments_count'
         ]
 
     def get_comments_count(self, obj):
@@ -113,8 +116,8 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         assignee_id = validated_data.pop('assignee_id', None)
         reviewer_id = validated_data.pop('reviewer_id', None)
 
-        task = Task.objects.create(**validated_data)
-
+        task = Task.objects.create(creator=self.context['request'].user, **validated_data)
+        
         if assignee_id:
             task.assignee = User.objects.get(pk=assignee_id)
         if reviewer_id:

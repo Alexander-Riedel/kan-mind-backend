@@ -18,7 +18,7 @@ class BoardListCreateView(generics.ListCreateAPIView):
     serializer_class = BoardSerializer
 
     # Only authenticated users can access this endpoint
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         # Get the currently authenticated user making the request
@@ -59,7 +59,7 @@ class BoardDetailView(generics.RetrieveAPIView):
     serializer_class = BoardSerializer
 
     # Only authenticated users can access this endpoint
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
 
     def get_object(self):
         # Call the superclass method to get the Board object using the URL parameter 'pk'
@@ -87,7 +87,8 @@ class BoardDetailView(generics.RetrieveAPIView):
 # The user must be logged in (IsAuthenticated).
 class AssignedTasksView(generics.ListAPIView):
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
+
+    # permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         # Get the current user
@@ -104,7 +105,8 @@ class AssignedTasksView(generics.ListAPIView):
 # Requires authentication (IsAuthenticated).
 class ReviewingTasksView(generics.ListAPIView):
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
+
+    # permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
@@ -118,7 +120,8 @@ class ReviewingTasksView(generics.ListAPIView):
 # The user must be authenticated AND a member of the board.
 class TaskCreateView(generics.CreateAPIView):
     serializer_class = TaskCreateSerializer
-    permission_classes = [IsAuthenticated]
+
+    # permission_classes = [IsAuthenticated]
 
     def get_serializer_context(self):
         # Needed so the serializer can access request.user in `validate`
@@ -139,7 +142,8 @@ class TaskCreateView(generics.CreateAPIView):
 class TaskUpdateView(generics.UpdateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskUpdateSerializer
-    permission_classes = [IsAuthenticated]
+
+    # permission_classes = [IsAuthenticated]
 
     def get_object(self):
         # Hol die Task und prüfe, ob der User zum Board gehört
