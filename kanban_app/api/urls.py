@@ -1,11 +1,9 @@
 from django.urls import path
-from .views import BoardListCreateView, BoardDetailView, BoardUpdateView, BoardDeleteView, EmailCheckView, AssignedTasksView, ReviewingTasksView, TaskCreateView, TaskUpdateDeleteView, CommentListView, CommentCreateView, CommentDeleteView
+from .views import BoardListCreateView, BoardRetrieveUpdateDeleteView, EmailCheckView, AssignedTasksView, ReviewingTasksView, TaskCreateView, TaskUpdateDeleteView, CommentListView, CommentCreateView, CommentDeleteView
 
 urlpatterns = [
     path('boards/', BoardListCreateView.as_view(), name='board-list-create'),
-    path('boards/<int:pk>/', BoardDetailView.as_view(), name='board-detail'),
-    path('boards/<int:pk>/', BoardUpdateView.as_view(), name='board-update'),
-    path('boards/<int:pk>/', BoardDeleteView.as_view(), name='board-delete'),
+    path('boards/<int:pk>/', BoardRetrieveUpdateDeleteView.as_view(), name='board-rud'),
     path('email-check/', EmailCheckView.as_view(), name='email-check'),
     path('tasks/assigned-to-me/', AssignedTasksView.as_view(), name='assigned-tasks'),
     path('tasks/reviewing/', ReviewingTasksView.as_view(), name='reviewing-tasks'),

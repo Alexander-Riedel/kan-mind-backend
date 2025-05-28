@@ -41,59 +41,24 @@ class BoardListCreateView(generics.ListCreateAPIView):
         serializer.save(owner=self.request.user)
 
 
-# This view handles:
-# - GET /api/boards/{board_id}/ to retrieve the details of a specific board
-# 
-# Requirements:
-# - The user must be authenticated
-# - The user must either be:
-#   - the owner (creator) of the board
-#   - OR a member of the board
-# 
-# Response includes:
-# - The board’s ID, title, owner ID, and list of member user IDs
-# - Additional fields like member_count, ticket_count (placeholder), etc.
-class BoardDetailView(generics.RetrieveAPIView):
-    # This view retrieves one specific Board object based on the ID (pk) from the URL
-    queryset = Board.objects.all()
-
-    # Use the existing BoardSerializer for serializing the output
-    serializer_class = BoardSerializer
-
-    # Only authenticated users can access this endpoint
-    # permission_classes = [IsAuthenticated]
-
-    def get_object(self):
-        # Call the superclass method to get the Board object using the URL parameter 'pk'
-        board = super().get_object()
-
-        # Get the currently authenticated user
-        user = self.request.user
-
-        # Check if the user has permission to access this board
-        # A user can access the board if they are either:
-        # - the owner of the board
-        # - OR listed as a member of the board
-        if board.owner != user and user not in board.members.all():
-            # If the user is neither the owner nor a member, deny access
-            raise PermissionDenied("Du darfst dieses Board nicht sehen.")
-
-        # Return the board object if access is allowed
-        return board
-    
-
-class BoardUpdateView(generics.UpdateAPIView):
+# - GET /api/boards/{board_id}/
+class BoardRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Board.objects.all()
     serializer_class = BoardSerializer
-
     # permission_classes = [IsAuthenticated]
 
     def get_object(self):
         board = super().get_object()
         user = self.request.user
-
-        if user != board.owner and user not in board.members.all():
-            raise PermissionDenied("Du darfst dieses Board nicht bearbeiten.")
+        if self.request.method == 'GET':
+            if board.owner != user and user not in board.members.all():
+                raise PermissionDenied("Du darfst dieses Board nicht sehen.")
+        elif self.request.method in ['PUT', 'PATCH']:
+            if board.owner != user and user not in board.members.all():
+                raise PermissionDenied("Du darfst dieses Board nicht bearbeiten.")
+        elif self.request.method == 'DELETE':
+            if board.owner != user:
+                raise PermissionDenied("Nur der Besitzer darf dieses Board löschen.")
         return board
 
     def update(self, request, *args, **kwargs):
@@ -101,12 +66,9 @@ class BoardUpdateView(generics.UpdateAPIView):
         board = self.get_object()
         serializer = self.get_serializer(board, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-
-        # Speichern
         updated_board = serializer.save()
 
-        # Ausgabe wie in Success-Response
-        response_data = {
+        return Response({
             'id': updated_board.id,
             'title': updated_board.title,
             'owner_data': {
@@ -121,28 +83,8 @@ class BoardUpdateView(generics.UpdateAPIView):
                     'fullname': f"{m.first_name} {m.last_name}".strip()
                 } for m in updated_board.members.all()
             ]
-        }
+        }, status=status.HTTP_200_OK)
 
-        return Response(response_data, status=status.HTTP_200_OK)
-    
-
-class BoardDeleteView(generics.DestroyAPIView):
-    queryset = Board.objects.all()
-
-    # permission_classes = [IsAuthenticated]
-
-    def get_object(self):
-        board = super().get_object()
-        user = self.request.user
-
-        if board.owner != user:
-            raise PermissionDenied("Nur der Besitzer darf dieses Board löschen.")
-        return board
-
-    def delete(self, request, *args, **kwargs):
-        board = self.get_object()
-        board.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
     
 
 class EmailCheckView(APIView):
@@ -173,7 +115,7 @@ class AssignedTasksView(generics.ListAPIView):
 
         # Return all tasks where the user is assigned
         return Task.objects.filter(assignee=user)
-    
+
 
 # This view handles:
 # - GET /api/tasks/reviewing/
