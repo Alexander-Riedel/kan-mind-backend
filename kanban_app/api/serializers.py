@@ -2,6 +2,7 @@ from rest_framework import serializers
 from kanban_app.models import Board, Task, Comment
 from django.contrib.auth.models import User
 
+
 class BoardSerializer(serializers.ModelSerializer):
     member_count = serializers.SerializerMethodField()
     ticket_count = serializers.SerializerMethodField()
@@ -29,13 +30,13 @@ class BoardSerializer(serializers.ModelSerializer):
         return obj.members.count()
 
     def get_ticket_count(self, obj):
-        return 0  # to be replaced once Task model is ready
+        return obj.tasks.count()
 
     def get_tasks_to_do_count(self, obj):
-        return 0  # placeholder
+        return obj.tasks.filter(status="to-do").count()
 
     def get_tasks_high_prio_count(self, obj):
-        return 0  # placeholder
+        return obj.tasks.filter(priority="high").count()
 
     def create(self, validated_data):
         members = validated_data.pop('members', [])
@@ -93,7 +94,7 @@ class TaskCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         user = self.context['request'].user
-        board = data.get('board')
+        board = data.get('board') or self.instance.board  # 🔧 Fallback bei PATCH
 
         # Check: is the user a member of the board (or owner)?
         if user != board.owner and user not in board.members.all():
@@ -127,9 +128,53 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         return task
     
 
-class TaskUpdateSerializer(TaskCreateSerializer):
-    class Meta(TaskCreateSerializer.Meta):
-        read_only_fields = ['board']
+class TaskUpdateSerializer(serializers.ModelSerializer):
+    assignee_id = serializers.IntegerField(required=False, allow_null=True)
+    reviewer_id = serializers.IntegerField(required=False, allow_null=True)
+
+    class Meta:
+        model = Task
+        fields = [
+            'title',
+            'description',
+            'status',
+            'priority',
+            'due_date',
+            'assignee_id',
+            'reviewer_id'
+        ]
+
+    def update(self, instance, validated_data):
+        # Diese Felder setzen wir direkt
+        for field in ['title', 'description', 'status', 'priority', 'due_date']:
+            if field not in validated_data:
+                validated_data[field] = getattr(instance, field)
+
+        # Sonderfall: assignee_id & reviewer_id
+        assignee_id = validated_data.get('assignee_id', serializers.empty)
+        if assignee_id is serializers.empty:
+            validated_data['assignee_id'] = instance.assignee.id if instance.assignee else None
+
+        reviewer_id = validated_data.get('reviewer_id', serializers.empty)
+        if reviewer_id is serializers.empty:
+            validated_data['reviewer_id'] = instance.reviewer.id if instance.reviewer else None
+
+        # assignee aktualisieren
+        if 'assignee_id' in validated_data:
+            assignee_id = validated_data.pop('assignee_id')
+            instance.assignee = User.objects.get(pk=assignee_id) if assignee_id else None
+
+        # reviewer aktualisieren
+        if 'reviewer_id' in validated_data:
+            reviewer_id = validated_data.pop('reviewer_id')
+            instance.reviewer = User.objects.get(pk=reviewer_id) if reviewer_id else None
+
+        # übrige Felder setzen
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+        return instance
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -141,3 +186,19 @@ class CommentSerializer(serializers.ModelSerializer):
 
     def get_author(self, obj):
         return f"{obj.author.first_name} {obj.author.last_name}".strip()
+    
+
+class BoardDetailSerializer(serializers.ModelSerializer):
+    tasks = TaskSerializer(many=True, read_only=True)
+    owner_id = serializers.IntegerField(source='owner.id', read_only=True)
+    members = UserSummarySerializer(many=True)
+
+    class Meta:
+        model = Board
+        fields = [
+            'id',
+            'title',
+            'owner_id',
+            'members',
+            'tasks'
+        ]

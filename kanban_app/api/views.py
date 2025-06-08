@@ -2,14 +2,13 @@ from rest_framework import mixins, generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from kanban_app.models import Board, Task
-from .serializers import BoardSerializer, TaskSerializer, TaskCreateSerializer, TaskUpdateSerializer, CommentSerializer
+from rest_framework.exceptions import PermissionDenied
 from django.db import models
 from django.contrib.auth.models import User
-
-from rest_framework import generics, permissions
-from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
+
+from kanban_app.models import Board, Task, Comment
+from .serializers import BoardSerializer, BoardDetailSerializer, TaskSerializer, TaskCreateSerializer, TaskUpdateSerializer, CommentSerializer
 
 
 # This view handles:
@@ -20,7 +19,7 @@ class BoardListCreateView(generics.ListCreateAPIView):
     serializer_class = BoardSerializer
 
     # Only authenticated users can access this endpoint
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         # Get the currently authenticated user making the request
@@ -44,8 +43,12 @@ class BoardListCreateView(generics.ListCreateAPIView):
 # - GET /api/boards/{board_id}/
 class BoardRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Board.objects.all()
-    serializer_class = BoardSerializer
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method == 'GET':
+            return BoardDetailSerializer
+        return BoardSerializer
 
     def get_object(self):
         board = super().get_object()
@@ -60,6 +63,11 @@ class BoardRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
             if board.owner != user:
                 raise PermissionDenied("Nur der Besitzer darf dieses Board löschen.")
         return board
+    
+    def retrieve(self, request, *args, **kwargs):
+        board = self.get_object()
+        serializer = self.get_serializer(board)
+        return Response(serializer.data)
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
@@ -69,26 +77,30 @@ class BoardRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
         updated_board = serializer.save()
 
         return Response({
-            'id': updated_board.id,
-            'title': updated_board.title,
-            'owner_data': {
-                'id': updated_board.owner.id,
-                'email': updated_board.owner.email,
-                'fullname': f"{updated_board.owner.first_name} {updated_board.owner.last_name}".strip()
+            "id": updated_board.id,
+            "title": updated_board.title,
+            "owner_data": {
+                "id": updated_board.owner.id,
+                "email": updated_board.owner.email,
+                "fullname": f"{updated_board.owner.first_name} {updated_board.owner.last_name}".strip()
             },
-            'members_data': [
+            "members_data": [
                 {
-                    'id': m.id,
-                    'email': m.email,
-                    'fullname': f"{m.first_name} {m.last_name}".strip()
+                    "id": m.id,
+                    "email": m.email,
+                    "fullname": f"{m.first_name} {m.last_name}".strip()
                 } for m in updated_board.members.all()
             ]
         }, status=status.HTTP_200_OK)
-
     
+    def destroy(self, request, *args, **kwargs):
+        board = self.get_object()
+        board.delete()
+        return Response(None, status=status.HTTP_204_NO_CONTENT)
+
 
 class EmailCheckView(APIView):
-    # permission_classes = [IsAuthenticated]  # aktuell offen
+    permission_classes = [IsAuthenticated]  # aktuell offen
 
     def get(self, request):
         email = request.query_params.get('email')
@@ -107,7 +119,7 @@ class EmailCheckView(APIView):
 class AssignedTasksView(generics.ListAPIView):
     serializer_class = TaskSerializer
 
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         # Get the current user
@@ -125,7 +137,7 @@ class AssignedTasksView(generics.ListAPIView):
 class ReviewingTasksView(generics.ListAPIView):
     serializer_class = TaskSerializer
 
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
@@ -140,7 +152,7 @@ class ReviewingTasksView(generics.ListAPIView):
 class TaskCreateView(generics.CreateAPIView):
     serializer_class = TaskCreateSerializer
 
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_context(self):
         # Needed so the serializer can access request.user in `validate`
@@ -164,7 +176,7 @@ class TaskUpdateDeleteView(generics.GenericAPIView,
     queryset = Task.objects.all()
     serializer_class = TaskUpdateSerializer
 
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_object(self):
         task = get_object_or_404(Task, pk=self.kwargs['pk'])
@@ -181,15 +193,17 @@ class TaskUpdateDeleteView(generics.GenericAPIView,
         return {'request': self.request}
 
     def patch(self, request, *args, **kwargs):
-        response = self.update(request, *args, **kwargs)
-        full_data = TaskSerializer(self.get_object()).data
+        partial = True  # ← wichtig
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        full_data = TaskSerializer(instance).data
         return Response(full_data, status=status.HTTP_200_OK)
 
     def delete(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
-    
 
-from kanban_app.models import Comment
 
 # GET /api/tasks/{task_id}/comments/
 class CommentListView(generics.ListAPIView):
