@@ -1,7 +1,11 @@
 
 # 🧠 KanMind – Kanban Backend API
 
-This is the backend for **KanMind**, a task management and collaboration tool inspired by Kanban. It is built using **Django** and **Django REST Framework**, with support for user authentication, boards, tasks, comments, and role-based permissions.
+This is the backend for **KanMind**, a task management and collaboration tool inspired by Kanban.  
+It is developed as part of a **training project for the Developer Akademie** and is intended for testing and educational purposes only.
+
+> ❗ **Important:** This project is part of a course exercise at the Developer Akademie.  
+> It is not intended for production use and does **not** include a license.
 
 ---
 
@@ -30,8 +34,8 @@ This is the backend for **KanMind**, a task management and collaboration tool in
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/kanmind-backend.git
-cd kanmind-backend
+git clone https://github.com/Alexander-Riedel/kan-mind-backend.git
+cd kan-mind-backend
 ```
 
 ### 2. Set up a virtual environment (recommended)
@@ -47,11 +51,6 @@ venv\Scripts\activate     # Windows
 ```bash
 pip install -r requirements.txt
 ```
-
-> **Note:** If `requirements.txt` doesn't exist yet, you can generate it with:
-> ```bash
-> pip freeze > requirements.txt
-> ```
 
 ### 4. Apply database migrations
 
@@ -107,19 +106,20 @@ Authorization: Token your_token_here
 kanmind-backend/
 ├── auth_app/           # Handles registration, login, user profiles
 ├── kanban_app/         # Boards, tasks, comments
-├── config/             # Django project settings and root URLs
+├── core/               # Django project settings and root URLs
 ├── db.sqlite3          # Default database (can be changed)
 └── manage.py           # Django CLI tool
 ```
 
 ---
 
-## 🛡️ License
+## ❌ License
 
-This project is licensed under the MIT License.
+This project is part of a learning exercise at the Developer Akademie.  
+There is **no license** associated with this code.
 
 ---
 
 ## 🙌 Contributing
 
-Feel free to fork this repo and contribute via pull requests or issues!
+This repository is for training purposes. Contributions are not expected.
