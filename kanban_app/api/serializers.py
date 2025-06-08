@@ -45,7 +45,6 @@ class BoardSerializer(serializers.ModelSerializer):
         return board
 
 
-# Used to represent a user as { id, email, fullname }
 class UserSummarySerializer(serializers.ModelSerializer):
     fullname = serializers.SerializerMethodField()
 
@@ -54,7 +53,10 @@ class UserSummarySerializer(serializers.ModelSerializer):
         fields = ['id', 'email', 'fullname']
 
     def get_fullname(self, obj):
-        return f"{obj.first_name} {obj.last_name}".strip()
+        try:
+            return obj.userprofile.fullname
+        except:
+            return ""
 
 
 # Task output serializer
@@ -77,7 +79,7 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_comments_count(self, obj):
         # Will be updated when Comment model is available
         return 0
-    
+
 
 class TaskCreateSerializer(serializers.ModelSerializer):
     assignee_id = serializers.IntegerField(required=False, allow_null=True)
@@ -94,11 +96,13 @@ class TaskCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         user = self.context['request'].user
-        board = data.get('board') or self.instance.board  # 🔧 Fallback bei PATCH
+        # 🔧 Fallback bei PATCH
+        board = data.get('board') or self.instance.board
 
         # Check: is the user a member of the board (or owner)?
         if user != board.owner and user not in board.members.all():
-            raise serializers.ValidationError("You must be a member of the board to create a task.")
+            raise serializers.ValidationError(
+                "You must be a member of the board to create a task.")
 
         # Optional: Check if assignee and reviewer (if given) are also members
         for role_field in ['assignee_id', 'reviewer_id']:
@@ -107,9 +111,11 @@ class TaskCreateSerializer(serializers.ModelSerializer):
                 try:
                     u = User.objects.get(pk=uid)
                     if u != board.owner and u not in board.members.all():
-                        raise serializers.ValidationError(f"{role_field} is not a member of the board.")
+                        raise serializers.ValidationError(
+                            f"{role_field} is not a member of the board.")
                 except User.DoesNotExist:
-                    raise serializers.ValidationError(f"{role_field} is invalid.")
+                    raise serializers.ValidationError(
+                        f"{role_field} is invalid.")
 
         return data
 
@@ -117,7 +123,8 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         assignee_id = validated_data.pop('assignee_id', None)
         reviewer_id = validated_data.pop('reviewer_id', None)
 
-        task = Task.objects.create(creator=self.context['request'].user, **validated_data)
+        task = Task.objects.create(
+            creator=self.context['request'].user, **validated_data)
 
         if assignee_id:
             task.assignee = User.objects.get(pk=assignee_id)
@@ -126,7 +133,7 @@ class TaskCreateSerializer(serializers.ModelSerializer):
 
         task.save()
         return task
-    
+
 
 class TaskUpdateSerializer(serializers.ModelSerializer):
     assignee_id = serializers.IntegerField(required=False, allow_null=True)
@@ -162,12 +169,14 @@ class TaskUpdateSerializer(serializers.ModelSerializer):
         # assignee aktualisieren
         if 'assignee_id' in validated_data:
             assignee_id = validated_data.pop('assignee_id')
-            instance.assignee = User.objects.get(pk=assignee_id) if assignee_id else None
+            instance.assignee = User.objects.get(
+                pk=assignee_id) if assignee_id else None
 
         # reviewer aktualisieren
         if 'reviewer_id' in validated_data:
             reviewer_id = validated_data.pop('reviewer_id')
-            instance.reviewer = User.objects.get(pk=reviewer_id) if reviewer_id else None
+            instance.reviewer = User.objects.get(
+                pk=reviewer_id) if reviewer_id else None
 
         # übrige Felder setzen
         for attr, value in validated_data.items():
@@ -185,8 +194,11 @@ class CommentSerializer(serializers.ModelSerializer):
         fields = ['id', 'created_at', 'author', 'content']
 
     def get_author(self, obj):
-        return f"{obj.author.first_name} {obj.author.last_name}".strip()
-    
+        try:
+            return obj.author.userprofile.fullname
+        except:
+            return ""
+
 
 class BoardDetailSerializer(serializers.ModelSerializer):
     tasks = TaskSerializer(many=True, read_only=True)

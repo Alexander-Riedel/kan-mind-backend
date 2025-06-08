@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 
 from kanban_app.models import Board, Task, Comment
+from auth_app.models import UserProfile
 from .serializers import BoardSerializer, BoardDetailSerializer, TaskSerializer, TaskCreateSerializer, TaskUpdateSerializer, CommentSerializer
 
 
@@ -100,15 +101,22 @@ class BoardRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class EmailCheckView(APIView):
-    permission_classes = [IsAuthenticated]  # aktuell offen
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         email = request.query_params.get('email')
-        if email is None:
+        if not email:
             return Response({'detail': 'E-Mail-Adresse muss angegeben werden.'}, status=400)
 
-        exists = User.objects.filter(email=email).exists()
-        return Response({'exists': exists})
+        try:
+            user = User.objects.get(email=email)
+            return Response({
+                "id": user.id,
+                "email": user.email,
+                "fullname": user.userprofile.fullname if hasattr(user, 'userprofile') else ""
+            })
+        except User.DoesNotExist:
+            return Response({'detail': 'Email nicht gefunden.'}, status=404)
     
 
 # This view handles:
@@ -206,17 +214,14 @@ class TaskUpdateDeleteView(generics.GenericAPIView,
 
 
 # GET /api/tasks/{task_id}/comments/
-class CommentListView(generics.ListAPIView):
+# POST /api/tasks/{task_id}/comments/
+class CommentListCreateView(generics.ListCreateAPIView):
     serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         task_id = self.kwargs['task_id']
         return Comment.objects.filter(task_id=task_id).order_by('created_at')
-
-
-# POST /api/tasks/{task_id}/comments/
-class CommentCreateView(generics.CreateAPIView):
-    serializer_class = CommentSerializer
 
     def perform_create(self, serializer):
         task = get_object_or_404(Task, pk=self.kwargs['task_id'])
