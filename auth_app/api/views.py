@@ -5,6 +5,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework import status
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.contrib.auth.hashers import make_password
 from auth_app.models import UserProfile
 from .serializers import RegistrationSerializer
 
@@ -51,6 +52,18 @@ class LoginView(APIView):
         email = request.data.get('email')
         password = request.data.get('password')
 
+        # 🔍 Falls Gastlogin + Benutzer existiert nicht → anlegen
+        if email == "kevin@kovacsi.de" and password == "asdasdasd":
+            try:
+                user = User.objects.get(username=email)
+            except User.DoesNotExist:
+                user = User.objects.create(
+                    username=email,
+                    email=email,
+                    password=make_password(password)
+                )
+                UserProfile.objects.create(user=user, fullname="Guest User")
+
         # Because we stored email as the username:
         user = authenticate(username=email, password=password)
 
@@ -60,10 +73,7 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get or create a token
         token, _ = Token.objects.get_or_create(user=user)
-
-        # Get fullname from UserProfile
         profile = UserProfile.objects.get(user=user)
 
         return Response({
