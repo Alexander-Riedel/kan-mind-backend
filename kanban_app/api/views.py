@@ -12,59 +12,49 @@ from auth_app.models import UserProfile
 from .serializers import BoardSerializer, BoardDetailSerializer, TaskSerializer, TaskCreateSerializer, TaskUpdateSerializer, CommentSerializer
 
 
-# This view handles:
-# - GET /api/boards/ to list all boards for the current user
-# - POST /api/boards/ to create a new board
 class BoardListCreateView(generics.ListCreateAPIView):
-    # Use the BoardSerializer for both input and output
+    """
+    - GET /api/boards/: List all boards where the current user is a member or owner.
+    - POST /api/boards/: Create a new board. The creator becomes the owner.
+    """
     serializer_class = BoardSerializer
-
-    # Only authenticated users can access this endpoint
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Get the currently authenticated user making the request
         user = self.request.user
-        
-        # Return all boards where the user is either:
-        # - the owner of the board (creator)
-        # - OR listed as a member of the board
-        # Use Q objects to allow OR logic in the query
-        # Use .distinct() to avoid duplicate entries if the user is both owner and member
         return Board.objects.filter(
             models.Q(owner=user) | models.Q(members=user)
         ).distinct()
 
     def perform_create(self, serializer):
-        # Automatically assign the currently logged-in user as the board owner
-        # when creating a new board
         serializer.save(owner=self.request.user)
 
 
-# - GET /api/boards/{board_id}/
 class BoardRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    - GET /api/boards/<id>/: View a specific board (if user is owner or member).
+    - PATCH /api/boards/<id>/: Update board (if owner or member).
+    - DELETE /api/boards/<id>/: Delete board (only if user is owner).
+    """
     queryset = Board.objects.all()
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
-        if self.request.method == 'GET':
-            return BoardDetailSerializer
-        return BoardSerializer
+        return BoardDetailSerializer if self.request.method == 'GET' else BoardSerializer
 
     def get_object(self):
         board = super().get_object()
         user = self.request.user
-        if self.request.method == 'GET':
-            if board.owner != user and user not in board.members.all():
-                raise PermissionDenied("Du darfst dieses Board nicht sehen.")
-        elif self.request.method in ['PUT', 'PATCH']:
-            if board.owner != user and user not in board.members.all():
-                raise PermissionDenied("Du darfst dieses Board nicht bearbeiten.")
-        elif self.request.method == 'DELETE':
-            if board.owner != user:
-                raise PermissionDenied("Nur der Besitzer darf dieses Board löschen.")
+
+        if self.request.method == 'GET' and user != board.owner and user not in board.members.all():
+            raise PermissionDenied("You do not have access to view this board.")
+        if self.request.method in ['PUT', 'PATCH'] and user != board.owner and user not in board.members.all():
+            raise PermissionDenied("You do not have permission to edit this board.")
+        if self.request.method == 'DELETE' and user != board.owner:
+            raise PermissionDenied("Only the owner can delete this board.")
+
         return board
-    
+
     def retrieve(self, request, *args, **kwargs):
         board = self.get_object()
         serializer = self.get_serializer(board)
@@ -93,7 +83,7 @@ class BoardRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
                 } for m in updated_board.members.all()
             ]
         }, status=status.HTTP_200_OK)
-    
+
     def destroy(self, request, *args, **kwargs):
         board = self.get_object()
         board.delete()
@@ -101,12 +91,16 @@ class BoardRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class EmailCheckView(APIView):
+    """
+    - GET /api/email-check/?email=...:
+      Checks if a user exists for the given email. Returns user data if found.
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         email = request.query_params.get('email')
         if not email:
-            return Response({'detail': 'E-Mail-Adresse muss angegeben werden.'}, status=400)
+            return Response({'detail': 'Email address is required.'}, status=400)
 
         try:
             user = User.objects.get(email=email)
@@ -116,62 +110,46 @@ class EmailCheckView(APIView):
                 "fullname": user.userprofile.fullname if hasattr(user, 'userprofile') else ""
             })
         except User.DoesNotExist:
-            return Response({'detail': 'Email nicht gefunden.'}, status=404)
+            return Response({'detail': 'Email not found.'}, status=404)
     
 
-# This view handles:
-# - GET /api/tasks/assigned-to-me/
-# 
-# Returns all tasks where the currently authenticated user is the assignee.
-# The user must be logged in (IsAuthenticated).
 class AssignedTasksView(generics.ListAPIView):
+    """
+    - GET /api/tasks/assigned-to-me/: Returns tasks assigned to the current user.
+    """
     serializer_class = TaskSerializer
-
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Get the current user
-        user = self.request.user
-
-        # Return all tasks where the user is assigned
-        return Task.objects.filter(assignee=user)
+        return Task.objects.filter(assignee=self.request.user)
 
 
-# This view handles:
-# - GET /api/tasks/reviewing/
-#
-# Returns all tasks where the current user is the reviewer.
-# Requires authentication (IsAuthenticated).
 class ReviewingTasksView(generics.ListAPIView):
+    """
+    - GET /api/tasks/reviewing/: Returns tasks where the user is the reviewer.
+    """
     serializer_class = TaskSerializer
-
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        return Task.objects.filter(reviewer=user)
+        return Task.objects.filter(reviewer=self.request.user)
     
 
-# This view handles:
-# - POST /api/tasks/
-#
-# It creates a new task on a board.
-# The user must be authenticated AND a member of the board.
 class TaskCreateView(generics.CreateAPIView):
+    """
+    - POST /api/tasks/: Creates a new task.
+      User must be authenticated and belong to the board.
+    """
     serializer_class = TaskCreateSerializer
-
     permission_classes = [IsAuthenticated]
 
     def get_serializer_context(self):
-        # Needed so the serializer can access request.user in `validate`
         return {'request': self.request}
 
     def perform_create(self, serializer):
-        # Let the serializer handle validation and saving
         serializer.save()
 
     def create(self, request, *args, **kwargs):
-        # Standard CreateAPIView behavior, but return full TaskSerializer after creation
         response = super().create(request, *args, **kwargs)
         created_task = Task.objects.get(pk=response.data['id'])
         full_data = TaskSerializer(created_task).data
@@ -181,27 +159,29 @@ class TaskCreateView(generics.CreateAPIView):
 class TaskUpdateDeleteView(generics.GenericAPIView,
                            mixins.UpdateModelMixin,
                            mixins.DestroyModelMixin):
+    """
+    - PATCH /api/tasks/<id>/: Update task (if board member).
+    - DELETE /api/tasks/<id>/: Delete task (if creator or board owner).
+    """
     queryset = Task.objects.all()
     serializer_class = TaskUpdateSerializer
-
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
         task = get_object_or_404(Task, pk=self.kwargs['pk'])
         user = self.request.user
-        if self.request.method == 'PATCH':
-            if user != task.board.owner and user not in task.board.members.all():
-                raise PermissionDenied("Du darfst diese Aufgabe nicht bearbeiten.")
-        elif self.request.method == 'DELETE':
-            if user != task.creator and user != task.board.owner:
-                raise PermissionDenied("Du darfst diese Aufgabe nicht löschen.")
+
+        if self.request.method == 'PATCH' and user != task.board.owner and user not in task.board.members.all():
+            raise PermissionDenied("You are not allowed to edit this task.")
+        if self.request.method == 'DELETE' and user != task.creator and user != task.board.owner:
+            raise PermissionDenied("Only the creator or board owner can delete this task.")
         return task
 
     def get_serializer_context(self):
         return {'request': self.request}
 
     def patch(self, request, *args, **kwargs):
-        partial = True  # ← wichtig
+        partial = True
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
@@ -213,9 +193,11 @@ class TaskUpdateDeleteView(generics.GenericAPIView,
         return super().destroy(request, *args, **kwargs)
 
 
-# GET /api/tasks/{task_id}/comments/
-# POST /api/tasks/{task_id}/comments/
 class CommentListCreateView(generics.ListCreateAPIView):
+    """
+    - GET /api/tasks/<task_id>/comments/: List all comments on a task.
+    - POST /api/tasks/<task_id>/comments/: Add a new comment to the task.
+    """
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated]
 
@@ -228,12 +210,15 @@ class CommentListCreateView(generics.ListCreateAPIView):
         serializer.save(author=self.request.user, task=task)
 
 
-# DELETE /api/tasks/{task_id}/comments/{comment_id}/
 class CommentDeleteView(generics.DestroyAPIView):
+    """
+    - DELETE /api/tasks/<task_id>/comments/<comment_id>/:
+      Only the author of the comment can delete it.
+    """
     queryset = Comment.objects.all()
 
     def get_object(self):
         comment = get_object_or_404(Comment, pk=self.kwargs['comment_id'])
         if comment.author != self.request.user:
-            raise PermissionDenied("Du darfst nur deine eigenen Kommentare löschen.")
+            raise PermissionDenied("You may only delete your own comments.")
         return comment
